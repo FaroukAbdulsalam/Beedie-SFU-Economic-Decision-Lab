@@ -80,7 +80,7 @@ with home:
     for col,(num,title,desc) in zip(cols,cards):
         with col:
             st.markdown(f'<div class="decision-box"><div class="decision-label">{num}</div><b>{title}</b><br><span class="small-note">{desc}</span></div>',unsafe_allow_html=True)
-    st.info("Prototype philosophy: keep the models simple enough to inspect. More concepts can be added after each lecture without changing the overall dashboard architecture.")
+    st.info("Prototype philosophy: More concepts will be added after each lecture without changing the overall dashboard architecture.")
 
 with m1:
     banner("MODULE 1","Customers, Costs, Pricing & Productivity","What should NorthStar produce, how much, and at what price?")

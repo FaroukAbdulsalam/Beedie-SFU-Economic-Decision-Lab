@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-from models import (
+from models_northstar_v2 import (
     demand_quantity, supply_quantity, equilibrium,
     point_elasticity, pricing_scenarios,
     game_expected_payoffs, adverse_selection,
@@ -15,6 +15,7 @@ from models import (
     incentive_productivity_model,
     customer_choice_model,
     experiment_model,
+    break_even_quantity, channel_economics,
 )
 
 BEEDIE_RED = "#A6192E"
@@ -68,7 +69,14 @@ home,m1,m2,m3,m4,m5=st.tabs(["Course Demo","Module 1","Module 2","Module 3","Mod
 
 with home:
     st.subheader("How the prototype works")
-    st.write("Each module contains a small number of transparent economic models. Students change assumptions using sliders or enter a text signal, observe the model result immediately, and then connect the result to the economic reasoning discussed in class.")
+    st.write("Each module contains a small number of transparent economic models. Students change assumptions, observe results, explain the economics, and use the evidence to update one continuing recommendation for NorthStar.")
+    st.markdown("""### Master NorthStar baseline
+**Current selling price:** CAD 900  |  **Demand:** Qd = 26,000 - 20P  |  **Marginal cost:** CAD 480  
+**Imported component:** USD 100  |  **CAD/USD:** 1.30  |  **Other variable cost:** CAD 350  
+At the baseline price, predicted quantity is **8,000 units**, contribution is **CAD 420 per unit**, and total operating contribution is **CAD 3.36 million**.
+
+**Decision Lab method:** Predict → Experiment → Observe → Explain → Decide → Reconsider.
+""")
     cols=st.columns(5)
     cards=[
         ("M1","Markets & Pricing","Demand, supply, equilibrium, elasticity."),
@@ -80,12 +88,12 @@ with home:
     for col,(num,title,desc) in zip(cols,cards):
         with col:
             st.markdown(f'<div class="decision-box"><div class="decision-label">{num}</div><b>{title}</b><br><span class="small-note">{desc}</span></div>',unsafe_allow_html=True)
-    st.info("Prototype philosophy: More concepts will be added after each lecture without changing the overall dashboard architecture.")
+    st.info("")
 
 with m1:
     banner("MODULE 1","Customers, Costs, Pricing & Productivity","What should NorthStar produce, how much, and at what price?")
     st.caption("Baseline equations: Qd = 26,000 − 20P and Qs = −6,000 + 20P.")
-    t1,t2,t3=st.tabs(["Demand & Supply","Movement vs Shift","Elasticity & Pricing"])
+    t1,t2,t3,t4=st.tabs(["Demand & Supply","Movement vs Shift","Elasticity & Pricing","Break-Even & Channels"])
     with t1:
         c1,c2=st.columns([.9,1.5])
         with c1:
@@ -114,8 +122,8 @@ with m1:
     with t3:
         c1,c2=st.columns([.9,1.4])
         with c1:
-            price=st.slider("Current NorthStar price (CAD)",450,1100,899,10,key="m1_price")
-            marginal_cost=st.slider("Variable / marginal cost per unit (CAD)",200,700,479,10,key="m1_mc")
+            price=st.slider("Current NorthStar price (CAD)",450,1100,900,10,key="m1_price")
+            marginal_cost=st.slider("Variable / marginal cost per unit (CAD)",200,700,480,10,key="m1_mc")
             a_d3=st.slider("Demand intercept",18000,34000,26000,1000,key="m1_a_d")
             elasticity=point_elasticity(price,a_d3,20)
             scenarios=pricing_scenarios(price,marginal_cost,a_d3,20)
@@ -128,24 +136,100 @@ with m1:
         elas_msg="Demand is locally inelastic: quantity is relatively less responsive to price." if abs(elasticity)<1 else "Demand is locally elastic: quantity is relatively responsive to price." if abs(elasticity)>1 else "Demand is approximately unit elastic at this point."
         decision_strip(f"ε = {elasticity:.2f}",elas_msg,f"Among the simple ±5% scenarios, the highest predicted total contribution is <b>{best['label']}</b> at about CAD {best['price']:,.0f}. Treat this as a decision aid, not a complete pricing rule.")
 
+    with t4:
+        st.subheader("Break-even, channel choice, and scale")
+        st.caption("Contribution per unit matters, but so does quantity. Use these tools to compare investment thresholds, direct versus retail economics, and the scale required for AI to pay for itself.")
+
+        be_tab, channel_tab, ai_be_tab = st.tabs(["Investment Break-Even","Direct vs Retail","AI Investment"])
+
+        with be_tab:
+            c1,c2=st.columns([1,1.3])
+            with c1:
+                fixed_investment=st.slider("Fixed campaign / investment cost (CAD)",100000,3000000,1200000,50000,key="m1_be_fixed")
+                contribution_incremental=st.slider("Contribution per incremental unit (CAD)",50,600,300,10,key="m1_be_cm")
+                expected_incremental_units=st.slider("Expected incremental units",0,30000,5000,500,key="m1_be_units")
+                be=break_even_quantity(fixed_investment,contribution_incremental)
+                expected_contribution=expected_incremental_units*contribution_incremental
+                net_value=expected_contribution-fixed_investment
+            with c2:
+                st.latex(r"Q_{BE}=\frac{F}{P-VC}")
+                st.metric("Break-even quantity",f"{be['break_even_units']:,.0f} units")
+                st.metric("Expected contribution",f"CAD {expected_contribution:,.0f}")
+                st.metric("Contribution after fixed investment",f"CAD {net_value:,.0f}")
+            status="Above break-even" if expected_incremental_units>=be["break_even_units"] else "Below break-even"
+            decision_strip(status,
+                f"NorthStar needs about {be['break_even_units']:,.0f} incremental units to recover the fixed investment.",
+                "Use break-even as a threshold, then ask how credible the required volume is and what uncertainty or opportunity cost remains.")
+
+        with channel_tab:
+            c1,c2=st.columns([1,1.3])
+            with c1:
+                retail_price=st.slider("Customer retail price (CAD)",600,1400,899,10,key="m1_ch_price")
+                direct_vc=st.slider("Direct-channel variable cost (CAD)",250,700,479,10,key="m1_ch_direct_vc")
+                retailer_share=st.slider("Retailer share of retail price (%)",0,50,25,1,key="m1_ch_share")
+                wholesale_cost=st.slider("NorthStar cost per retail-channel unit (CAD)",250,700,430,10,key="m1_ch_wholesale")
+                direct_units=st.slider("Expected direct-channel units",0,30000,8000,500,key="m1_ch_direct_units")
+                retail_units=st.slider("Expected retail-channel units",0,50000,15000,500,key="m1_ch_retail_units")
+                ch=channel_economics(retail_price,direct_vc,retailer_share,wholesale_cost)
+                direct_total=ch["direct_contribution"]*direct_units
+                retail_total=ch["retail_contribution"]*retail_units
+            with c2:
+                df=pd.DataFrame([
+                    ["Direct",direct_units,ch["direct_contribution"],direct_total],
+                    ["Retail",retail_units,ch["retail_contribution"],retail_total]
+                ],columns=["Channel","Expected units","Contribution / unit","Total contribution"])
+                st.dataframe(df.style.format({
+                    "Expected units":"{:,.0f}",
+                    "Contribution / unit":"CAD {:,.2f}",
+                    "Total contribution":"CAD {:,.0f}"
+                }),use_container_width=True,hide_index=True)
+                st.metric("Direct contribution / unit",f"CAD {ch['direct_contribution']:,.2f}")
+                st.metric("Retail contribution / unit",f"CAD {ch['retail_contribution']:,.2f}")
+                ratio=(ch["direct_contribution"]/ch["retail_contribution"]) if ch["retail_contribution"]>0 else float("inf")
+                st.metric("Retail units needed per direct sale",f"{ratio:.2f}×")
+            preferred="Direct" if direct_total>=retail_total else "Retail"
+            decision_strip(
+                f"Higher modeled total contribution: {preferred}",
+                "Direct can have the higher unit contribution while retail can still create more total contribution if it generates enough additional volume.",
+                "Do not choose a channel from unit margin alone. Compare volume, capacity, reach, customer acquisition, service and total contribution.")
+
+        with ai_be_tab:
+            c1,c2=st.columns([1,1.3])
+            with c1:
+                ai_fixed=st.slider("Annual AI system cost (CAD)",100000,2000000,600000,50000,key="m1_ai_fixed")
+                saving_per_unit=st.slider("Variable-cost saving per appliance (CAD)",5,150,40,5,key="m1_ai_save")
+                expected_volume=st.slider("Expected annual appliance volume",1000,50000,15000,1000,key="m1_ai_volume")
+                ai_be=break_even_quantity(ai_fixed,saving_per_unit)
+                annual_savings=expected_volume*saving_per_unit
+                ai_net=annual_savings-ai_fixed
+            with c2:
+                st.latex(r"Q_{BE}^{AI}=\frac{AI\ Fixed\ Cost}{Variable\ Cost\ Saving\ per\ Unit}")
+                st.metric("AI break-even volume",f"{ai_be['break_even_units']:,.0f} units")
+                st.metric("Savings at expected volume",f"CAD {annual_savings:,.0f}")
+                st.metric("Net annual benefit",f"CAD {ai_net:,.0f}")
+            decision_strip(
+                f"Break-even = {ai_be['break_even_units']:,.0f} units",
+                "AI raises fixed cost but can lower marginal cost, so its economics improve as the saving is spread over more units.",
+                "Treat the threshold as a screening device. Ask whether the per-unit saving is credible and whether implementation, quality and opportunity costs change the decision.")
+
 with m2:
     banner("MODULE 2","Competition, Strategy & Information","How should NorthStar act when others respond strategically or know something we do not?")
     gt,adv,mh,sig=st.tabs(["Game Theory","Adverse Selection","Moral Hazard","Signalling"])
     with gt:
-        st.write("NorthStar chooses **Maintain** or **Discount**. NovaHome can do the same.")
+        st.write("NorthStar chooses **Maintain** or **Discount**. NovaHome can do the same. Payoffs are annual operating contribution in CAD millions under the calibrated NorthStar case.")
         c1,c2=st.columns([1,1])
         with c1:
             p_rival_discount=st.slider("Probability NovaHome discounts",0.0,1.0,0.50,0.05)
-            payoff_MM=st.number_input("NorthStar payoff: Maintain / Rival Maintain",value=8.0)
-            payoff_MD=st.number_input("NorthStar payoff: Maintain / Rival Discount",value=2.0)
-            payoff_DM=st.number_input("NorthStar payoff: Discount / Rival Maintain",value=11.0)
-            payoff_DD=st.number_input("NorthStar payoff: Discount / Rival Discount",value=5.0)
+            payoff_MM=st.number_input("NorthStar payoff: Maintain / Rival Maintain",value=3.36)
+            payoff_MD=st.number_input("NorthStar payoff: Maintain / Rival Discount",value=2.10)
+            payoff_DM=st.number_input("NorthStar payoff: Discount / Rival Maintain",value=3.90)
+            payoff_DD=st.number_input("NorthStar payoff: Discount / Rival Discount",value=1.80)
             result=game_expected_payoffs(p_rival_discount,payoff_MM,payoff_MD,payoff_DM,payoff_DD)
         with c2:
             table=pd.DataFrame([[f"{payoff_MM:.1f}",f"{payoff_MD:.1f}"],[f"{payoff_DM:.1f}",f"{payoff_DD:.1f}"]],index=["NorthStar: Maintain","NorthStar: Discount"],columns=["NovaHome: Maintain","NovaHome: Discount"])
             st.dataframe(table,use_container_width=True)
-            st.metric("Expected payoff — Maintain",f"{result['maintain']:.2f}")
-            st.metric("Expected payoff — Discount",f"{result['discount']:.2f}")
+            st.metric("Expected payoff — Maintain",f"CAD {result['maintain']:.2f}m")
+            st.metric("Expected payoff — Discount",f"CAD {result['discount']:.2f}m")
         decision_strip(f"Best expected action: {result['best_action']}","The best action depends on what NorthStar believes NovaHome is likely to do.",f"Choose <b>{result['best_action']}</b> under the current probability and payoff assumptions; revisit if beliefs about NovaHome change.")
     with adv:
         st.write("A supplier can be high quality or low quality, but NorthStar does not directly observe type before contracting.")
@@ -224,9 +308,9 @@ with m3:
         with c1:
             usd_component=st.slider("Imported component price (USD)",40,250,100,5)
             fx_rate=st.slider("CAD per USD",0.90,1.80,1.30,0.01)
-            other_cost=st.slider("Other CAD cost per appliance",100,700,330,10)
-            sale_price=st.slider("NorthStar selling price (CAD)",500,1400,899,10)
-            units=st.slider("Units sold",1000,30000,10000,1000)
+            other_cost=st.slider("Other CAD variable cost per appliance",100,700,350,10)
+            sale_price=st.slider("NorthStar selling price (CAD)",500,1400,900,10)
+            units=st.slider("Units sold",1000,30000,8000,1000)
             res=exchange_rate_profit(usd_component,fx_rate,other_cost,sale_price,units)
         with c2:
             st.latex(r"Imported\ Cost_{CAD}=Price_{USD}\times (CAD/USD)")
@@ -258,6 +342,15 @@ with m4:
     banner("MODULE 4","Reading the Economy, Anticipating Policy & Managing Risk","How can managers read economic signals, anticipate policy responses, and prepare NorthStar?")
     policy_tab,control_tab=st.tabs(["Economic Signal → Policy → Business","Price Ceiling / Floor"])
     with policy_tab:
+        st.subheader("NorthStar economic outlook")
+        outlook=st.selectbox("Stress-test scenario",["Baseline","Demand slowdown","CAD depreciation","Inflation + weak CAD","Domestic-production support"])
+        outlook_map={
+            "Baseline":"Demand and costs remain near the master assumptions; CAD/USD = 1.30.",
+            "Demand slowdown":"Household durable-goods demand weakens. Test a negative demand-intercept shift in Module 1.",
+            "CAD depreciation":"CAD/USD rises from 1.30 toward 1.45. Revisit imported cost and margin in Module 3.",
+            "Inflation + weak CAD":"Demand softens while imported and domestic costs rise. Stress-test both demand and cost assumptions.",
+            "Domestic-production support":"Industrial policy lowers the effective cost of domestic capacity. Revisit Module 3 sourcing and AI-productivity choices."}
+        st.info(outlook_map[outlook])
         st.subheader("Structured signal")
         signal=st.selectbox("Choose an economic signal or pressure",["High inflation","Weak growth or unemployment","Fiscal deficit or revenue shortfall","Currency depreciation or falling reserves","Affordability pressure","Strategic-industry concerns","Environmental objectives"])
         p=policy_lookup(signal)
@@ -324,7 +417,7 @@ with m5:
             customers=st.slider("Customers exposed",100,20000,5000,100)
             baseline_conv=st.slider("Baseline conversion (%)",0.0,80.0,20.0,1.0)
             uplift_pp=st.slider("Default / framing uplift (percentage points)",-20.0,40.0,8.0,1.0)
-            contrib=st.slider("Contribution per conversion (CAD)",10,500,120,10)
+            contrib=st.slider("Contribution per conversion (CAD)",10,500,420,10)
             intervention_cost_total=st.slider("Total intervention cost (CAD)",0,100000,5000,500)
             res=customer_choice_model(customers,baseline_conv,uplift_pp,contrib,intervention_cost_total)
         with c2:
@@ -342,7 +435,7 @@ with m5:
             n_treat=st.slider("Treatment sample size",50,5000,500,50)
             conv_control=st.slider("Control conversion (%)",0.0,80.0,20.0,1.0)
             conv_treat=st.slider("Treatment conversion (%)",0.0,80.0,26.0,1.0)
-            value_per_success=st.slider("Contribution per conversion (CAD)",10,500,120,10,key="m5_exp_val")
+            value_per_success=st.slider("Contribution per conversion (CAD)",10,500,420,10,key="m5_exp_val")
             treatment_cost_per_person=st.slider("Treatment cost per exposed customer (CAD)",0.0,50.0,2.0,0.5)
             res=experiment_model(n_control,n_treat,conv_control,conv_treat,value_per_success,treatment_cost_per_person)
         with c2:

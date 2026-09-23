@@ -284,3 +284,19 @@ def experiment_model(n_control,n_treat,conv_control,conv_treat,value_per_success
         "effect_pp":effect*100,"z":z,"value_per_treated":value_per_treated,
         "decision":decision,"interpretation":interp,"recommendation":rec
     }
+
+
+def break_even_quantity(fixed_cost, contribution_per_unit):
+    if contribution_per_unit <= 0:
+        return {"break_even_units": float("inf")}
+    return {"break_even_units": fixed_cost / contribution_per_unit}
+
+def channel_economics(retail_price, direct_variable_cost, retailer_share, wholesale_cost):
+    direct_contribution = retail_price - direct_variable_cost
+    northstar_retail_revenue = retail_price * (1 - retailer_share/100)
+    retail_contribution = northstar_retail_revenue - wholesale_cost
+    return {
+        "direct_contribution": direct_contribution,
+        "northstar_retail_revenue": northstar_retail_revenue,
+        "retail_contribution": retail_contribution
+    }

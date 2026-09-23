@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-from models_northstar_v3 import (
+from models import (
     demand_quantity, supply_quantity, equilibrium,
     point_elasticity, pricing_scenarios,
     game_expected_payoffs, adverse_selection,

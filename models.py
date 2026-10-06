@@ -300,3 +300,47 @@ def channel_economics(retail_price, direct_variable_cost, retailer_share, wholes
         "northstar_retail_revenue": northstar_retail_revenue,
         "retail_contribution": retail_contribution
     }
+
+
+def provider_expected_cost(fee_per_unit, extra_cost_per_unit, units):
+    total_per_unit = fee_per_unit + extra_cost_per_unit
+    return {"total_per_unit": total_per_unit, "total_expected_cost": total_per_unit * units}
+
+def pilot_screen_value(p_reveal_problem, avoided_loss, pilot_cost):
+    expected_benefit = p_reveal_problem * avoided_loss
+    return {"expected_benefit": expected_benefit, "net_expected_value": expected_benefit - pilot_cost}
+
+def high_effort_value(low_repeat_rate, high_repeat_rate, cases, repeat_cost, effort_cost=0):
+    gross_benefit = (low_repeat_rate - high_repeat_rate) * cases * repeat_cost
+    return {"gross_benefit": gross_benefit, "net_surplus": gross_benefit - effort_cost}
+
+def bargaining_split(total_value, outside_a, outside_b, share_a=0.5):
+    surplus = total_value - outside_a - outside_b
+    share_a = max(0.0, min(1.0, share_a))
+    if surplus < 0:
+        return {"surplus": surplus, "party_a": outside_a, "party_b": outside_b, "feasible": False}
+    return {
+        "surplus": surplus,
+        "party_a": outside_a + share_a * surplus,
+        "party_b": outside_b + (1-share_a) * surplus,
+        "feasible": True,
+    }
+
+def delivered_cost(quote, freight=0, insurance=0, compliance=0, inventory=0, quality_rework=0, tariff=0, other=0):
+    total = quote + freight + insurance + compliance + inventory + quality_rework + tariff + other
+    return {"quote": quote, "delivered_cost": total, "add_on_cost": total - quote}
+
+def quality_adjusted_value(correct, incorrect, value_correct=10, penalty_incorrect=6):
+    return value_correct * correct - penalty_incorrect * incorrect
+
+def warranty_default_effect(opt_in_rate, opt_out_rate, customers, contribution_per_plan):
+    lift = opt_out_rate - opt_in_rate
+    incremental_plans = lift * customers
+    return {
+        "lift_pp": lift * 100,
+        "incremental_plans": incremental_plans,
+        "incremental_contribution": incremental_plans * contribution_per_plan,
+    }
+
+def framing_effect(gain_rate, loss_rate):
+    return {"effect_pp": (loss_rate - gain_rate) * 100}

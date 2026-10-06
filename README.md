@@ -1,18 +1,16 @@
-# NorthStar Economics Dashboard — Assignments 1 & 2
+NorthStar Full App — GitHub Ready
 
-Files:
-- `app.py`: Main Decision Lab for Modules 1–5, aligned to the guided assignments.
-- `models.py`: Transparent classroom economic models and assignment helpers.
-- `pages/Module_5_Live_Experiments.py`: Four live Module 5 experiments plus instructor results.
-- `requirements.txt`: Deployment dependencies.
+Repository structure:
+app.py
+models.py
+requirements.txt
+README.md
+pages/
+    Module_5_Live_Experiments.py
 
-## Run locally
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+IMPORTANT:
+Your Streamlit deployment must point to the ROOT `app.py`.
+After deployment, the main dashboard should show:
+Assignment 2 build • Modules 1–5 enabled
 
-## Streamlit Cloud
-Deploy `app.py` as the main file. The Module 5 Live Experiments page will appear automatically in the sidebar.
-
-Optional: set environment variable `INSTRUCTOR_CODE` to change the instructor-results code on the experiment page.
+If that caption is missing, Streamlit is still running an older app.py.

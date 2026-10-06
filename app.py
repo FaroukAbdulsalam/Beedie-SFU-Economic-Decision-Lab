@@ -67,6 +67,7 @@ def plot_demand_supply(a_d,b_d,a_s,b_s,price_marker=None,control_price=None):
 
 st.markdown('<div class="northstar-title">NorthStar Economics Dashboard</div>',unsafe_allow_html=True)
 st.markdown('<div class="northstar-subtitle">A live managerial-economics laboratory: <b>Input → Model → Interpretation → Decision</b></div>',unsafe_allow_html=True)
+st.caption("Assignment 2 build • Modules 1–5 enabled")
 
 home,m1,m2,m3,m4,m5=st.tabs(["Course Demo","Module 1","Module 2","Module 3","Module 4","Module 5"])
 

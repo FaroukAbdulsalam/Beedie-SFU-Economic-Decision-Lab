@@ -197,13 +197,13 @@ with m1:
                     "Contribution / unit":"CAD {:,.0f}",
                     "Total contribution":"CAD {:,.0f}"
                 }),use_container_width=True,hide_index=True)
-                m1,m2,m3=st.columns(3)
-                m1.metric("Break-even quantity",f"{pc_be_q:,.0f}")
-                m2.metric("Predicted quantity",f"{pc_q1:,.0f}")
-                m3.metric("Gap to break-even",f"{abs(pc_gap):,.0f} units",delta=("above" if pc_gap<=0 else "short"))
-                m4,m5=st.columns(2)
-                m4.metric("Required volume increase",f"{pc_required_growth:.2f}%")
-                m5.metric("Predicted volume increase",f"{pc_predicted_growth:.2f}%")
+                pc_c1,pc_c2,pc_c3=st.columns(3)
+                pc_c1.metric("Break-even quantity",f"{pc_be_q:,.0f}")
+                pc_c2.metric("Predicted quantity",f"{pc_q1:,.0f}")
+                pc_c3.metric("Gap to break-even",f"{abs(pc_gap):,.0f} units",delta=("above" if pc_gap<=0 else "short"))
+                pc_c4,pc_c5=st.columns(2)
+                pc_c4.metric("Required volume increase",f"{pc_required_growth:.2f}%")
+                pc_c5.metric("Predicted volume increase",f"{pc_predicted_growth:.2f}%")
             if pc_gap>0:
                 pc_result=f"Price cut falls {pc_gap:,.0f} units short of contribution break-even"
                 pc_interp=f"NorthStar needs about {pc_be_q:,.0f} units at CAD {pc_new_price:,.0f} to preserve baseline contribution, but the demand model predicts {pc_q1:,.0f}."

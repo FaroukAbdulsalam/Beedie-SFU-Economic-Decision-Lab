@@ -344,3 +344,4 @@ def warranty_default_effect(opt_in_rate, opt_out_rate, customers, contribution_p
 
 def framing_effect(gain_rate, loss_rate):
     return {"effect_pp": (loss_rate - gain_rate) * 100}
+    

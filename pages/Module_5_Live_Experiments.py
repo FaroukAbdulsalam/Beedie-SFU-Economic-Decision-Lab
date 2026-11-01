@@ -118,7 +118,7 @@ st.title("NorthStar Live Experiments")
 st.caption(f"Anonymous participant code: {participant_id}")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["Experiment 1", "Experiment 2", "Experiment 3", "Experiment 4", "Instructor Results & Data"]
+    ["Experiment 1", "Experiment 2", "Experiment 3", "Experiment 4", "Instructor results"]
 )
 
 with tab1:
@@ -454,15 +454,15 @@ with tab4:
 
         # Identical layout, colour and length in both arms: only the wording changes.
         if gain:
-            ad_head = "Save about CAD 60 every year."
-            ad_body = "Choose EcoSeries and keep roughly CAD 60 a year in your pocket through lower energy and water bills."
+            ad_head = "Save about CAD 180 every year."
+            ad_body = "Choose EcoSmart and save about CAD 180 per year in energy costs."
         else:
-            ad_head = "Stop losing about CAD 60 every year."
-            ad_body = "With the standard model, you lose roughly CAD 60 a year to higher energy and water bills."
+            ad_head = "Stop losing about CAD 180 every year."
+            ad_body = "Choose the standard model and you could lose about CAD 180 per year in extra energy costs."
         ad_html = (
             '<div style="border:2px solid #1F3557;border-radius:14px;padding:16px 18px;margin:6px 0 14px;'
             'background:rgba(31,53,87,.06);">'
-            '<div style="font-size:12px;font-weight:700;color:#1F3557;letter-spacing:.02em;">NorthStar EcoSeries</div>'
+            '<div style="font-size:12px;font-weight:700;color:#1F3557;letter-spacing:.02em;">NorthStar EcoSmart</div>'
             f'<div style="font-size:22px;font-weight:800;margin:4px 0 6px;">{ad_head}</div>'
             f'<div style="font-size:15px;">{ad_body}</div></div>'
         )
@@ -477,13 +477,13 @@ with tab4:
         with st.form("exp4_form"):
             st.markdown("#### Decision 1: Which model would you buy?")
             st.write(
-                "You are buying a **NorthStar SmartWash for CAD 899**. The **EcoSeries** version is identical, "
-                "except that it costs **CAD 120 more** and uses less energy and water. You see this message:"
+                "You are buying a **NorthStar SmartWash for CAD 899**. The **EcoSmart** version is identical, "
+                "except that it costs **CAD 999** (CAD 100 more) and uses less energy. You see this message:"
             )
             st.markdown(ad_html, unsafe_allow_html=True)
             upgrade = st.radio(
                 "Your choice",
-                ["Standard SmartWash (CAD 899)", "EcoSeries SmartWash (CAD 1,019)"],
+                ["Standard SmartWash (CAD 899)", "EcoSmart SmartWash (CAD 999)"],
                 index=None,
                 key="exp4_upgrade",
             )
@@ -509,7 +509,7 @@ with tab4:
                         participant_id,
                         datetime.now(timezone.utc).isoformat(),
                         exp4_arm,
-                        int(upgrade.startswith("EcoSeries")),
+                        int(upgrade.startswith("EcoSmart")),
                         int(persuasive),
                         int(plan == plan_b),
                     )):
@@ -520,195 +520,205 @@ with tab4:
     if st.session_state.exp4_submitted:
         st.success("Experiment 4 submitted. Please do not discuss your screen with classmates until the instructor reveals the results.")
 
+# ---------------------------------------------------------------------------
+# Instructor results: analysis follows the revised Module 5 slides (16–28)
+# ---------------------------------------------------------------------------
+import numpy as np  # noqa: E402
+import plotly.graph_objects as go  # noqa: E402
+from models import CASE, diff_props, diff_means, share_ci, default_margin, mde, scale_decision, threshold  # noqa: E402
+
+RED, BLUE, INK, SLATE = "#A6192E", "#1F5FA8", "#1D232B", "#5B6472"
+
+
+def demo_data(seed=7):
+    """Synthetic class (about 30 per arm) for previewing the dashboard before class. Never written to the database."""
+    rng = np.random.default_rng(seed)
+    rows1 = []
+    for arm, cases, acc in [("Control", 6, 0.86), ("Quantity", 8, 0.70), ("Balanced", 7, 0.90)]:
+        for i in range(10):
+            att = int(np.clip(rng.normal(cases, 1), 2, 8)); cor = int(rng.binomial(att, acc))
+            rows1.append({"participant_id": f"{arm[:2]}{i}", "submitted_at": "", "arm": arm, "attempted": att, "correct": cor,
+                          "incorrect": att - cor, "accuracy": cor / att, "quality_value": 10 * cor - 6 * (att - cor),
+                          "elapsed_seconds": float(rng.integers(60, 200))})
+    rows2 = [{"participant_id": f"d{arm}{i}", "submitted_at": "", "arm": arm, "chose_plan": int(rng.random() < p),
+              "trust_rating": int(np.clip(round(rng.normal(t, 0.9)), 1, 5))}
+             for arm, p, t in [("Opt-In", 0.30, 3.8), ("Opt-Out", 0.60, 3.0)] for i in range(30)]
+    cols = ["White", "Black", "Silver", "Navy Blue"]
+    rows3 = [{"participant_id": f"c{i}", "submitted_at": "", "preferred_color": rng.choice(cols, p=[.25, .40, .15, .20]),
+              "purchase_likelihood": int(rng.integers(2, 6)), "would_pay_premium": int(rng.random() < 0.2)} for i in range(60)]
+    rows4 = [{"participant_id": f"f{arm}{i}", "submitted_at": "", "arm": arm, "chose_upgrade": int(rng.random() < pe),
+              "persuasiveness": int(rng.integers(2, 6)), "chose_risky": int(rng.random() < pr)}
+             for arm, pe, pr in [("Gain frame", 0.40, 0.30), ("Loss frame", 0.50, 0.60)] for i in range(30)]
+    return pd.DataFrame(rows1), pd.DataFrame(rows2), pd.DataFrame(rows3), pd.DataFrame(rows4)
+
+
+def archive_all():
+    conn = get_conn()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    for table in TABLE_SCHEMAS:
+        conn.execute(f"ALTER TABLE {table} RENAME TO {table}_archived_{stamp}")
+    conn.commit(); conn.close()
+    get_conn().close()   # recreate empty tables
+    return stamp
+
+
+def ci_text(d, scale=100, unit=" pp"):
+    return f"{d['diff']*scale:+.1f}{unit} (95% CI {d['lo']*scale:+.1f} to {d['hi']*scale:+.1f})"
+
+
 with tab5:
-    st.header("Instructor Results & Data")
+    st.header("Instructor results")
     code = st.text_input("Instructor access code", type="password")
+    if code and code != INSTRUCTOR_CODE:
+        st.error("That code is not recognized. Check the INSTRUCTOR_CODE setting for this deployment.")
     if code == INSTRUCTOR_CODE:
-        st.success("Instructor access granted.")
-        st.write(
-            "**Where the data are:** Results appear below as soon as students submit. "
-            "Use the download buttons to save the raw student-level data as CSV."
-        )
-        st.caption(
-            "The app also stores all submissions in `northstar_experiments.db` in the same folder where the Streamlit app is running."
-        )
-
-        conn = get_conn()
-        e1 = pd.read_sql_query("SELECT * FROM exp1", conn)
-        e2 = pd.read_sql_query("SELECT * FROM exp2", conn)
-        e3 = pd.read_sql_query("SELECT * FROM exp3", conn)
-        e4 = pd.read_sql_query("SELECT * FROM exp4", conn)
-        conn.close()
-
-        st.subheader("Group assignment guide")
-        st.markdown(
-            "- **Experiment 1:** one-third each select **Control**, **Quantity**, **Balanced**.\n"
-            "- **Experiment 2:** half select **Group A** (= Opt-In, control), half **Group B** (= Opt-Out, treatment).\n"
-            "- **Experiment 4:** half select **Group X** (= Gain frame), half **Group Y** (= Loss frame).\n\n"
-            "Students see neutral group names so the label itself does not prime them. "
-            "Use a different splitting rule for each experiment (e.g., seat rows, then odd/even birth month) "
-            "so the same students are not always treated together."
-        )
-
-        st.subheader("Experiment 1 results")
-        if e1.empty:
-            st.info("No Experiment 1 submissions yet.")
+        source = st.radio("Data", ["Class submissions", "Demo data (preview only)"], horizontal=True, key="inst_source")
+        if source.startswith("Demo"):
+            e1, e2, e3, e4 = demo_data()
+            st.info("Showing synthetic data so you can rehearse the debrief. Nothing here is saved.")
         else:
-            summary1 = (
-                e1.groupby("arm", as_index=False)
-                  .agg(
-                      students=("participant_id", "count"),
-                      avg_attempted=("attempted", "mean"),
-                      avg_accuracy=("accuracy", "mean"),
-                      avg_value=("quality_value", "mean"),
-                  )
-            )
-            summary1["avg_accuracy"] = summary1["avg_accuracy"].map(lambda x: f"{x:.1%}")
-            st.dataframe(summary1, width="stretch", hide_index=True)
-            st.download_button(
-                "Download Experiment 1 CSV",
-                e1.to_csv(index=False).encode("utf-8"),
-                "experiment1_results.csv",
-                "text/csv"
-            )
+            conn = get_conn()
+            e1, e2, e3, e4 = (pd.read_sql_query(f"SELECT * FROM {t}", conn) for t in ("exp1", "exp2", "exp3", "exp4"))
+            conn.close()
+            st.caption(f"Submissions so far: Experiment 1: {len(e1)}, Experiment 2: {len(e2)}, Experiment 3: {len(e3)}, Experiment 4: {len(e4)}.")
 
-        st.subheader("Experiment 2 results")
+        with st.expander("Group assignment guide"):
+            st.markdown(
+                "- **Experiment 1:** one-third each choose **Control**, **Quantity**, **Balanced**.\n"
+                "- **Experiment 2:** half choose **Group A** (opt-in, control), half **Group B** (opt-out, treatment).\n"
+                "- **Experiment 4:** half choose **Group X** (gain frame), half **Group Y** (loss frame).\n\n"
+                "Students see neutral group names so the label does not prime them. Use a different split for each experiment "
+                "(seat rows, then birth month) so the same students are not always treated together.")
+
+        # ---------------- Experiment 1
+        st.subheader("Experiment 1: output or value?")
+        if e1.empty:
+            st.info("No Experiment 1 submissions yet. They appear here as students submit.")
+        else:
+            g = e1.groupby("arm")
+            s1 = g.agg(students=("participant_id", "count"), cases=("attempted", "mean"), accuracy=("accuracy", "mean"),
+                       value=("quality_value", "mean"), sd=("quality_value", "std")).reindex(["Control", "Quantity", "Balanced"]).dropna(how="all")
+            ctrl = s1.loc["Control"] if "Control" in s1.index else None
+            effects = []
+            for arm, r in s1.iterrows():
+                if ctrl is not None and arm != "Control":
+                    effects.append(diff_means(r["value"], r["sd"] or 0, int(r["students"]), ctrl["value"], ctrl["sd"] or 0, int(ctrl["students"])))
+                else:
+                    effects.append(None)
+            s1["Effect vs control"] = [ci_text(e, 1, "") if e else "–" for e in effects]
+            st.dataframe(s1.reset_index().rename(columns={"arm": "Arm", "students": "Students", "cases": "Cases per person",
+                                                          "accuracy": "Accuracy", "value": "Value per person", "sd": "SD of value"})
+                         .style.format({"Cases per person": "{:.1f}", "Accuracy": "{:.0%}", "Value per person": "{:.1f}", "SD of value": "{:.1f}"}),
+                         hide_index=True, width="stretch")
+            fig1 = go.Figure(go.Bar(x=list(s1.index), y=s1["value"], marker_color=[SLATE, BLUE, RED][:len(s1)],
+                                    error_y=dict(type="data", array=(s1["sd"].fillna(0) / np.sqrt(s1["students"])).tolist(), color=INK)))
+            fig1.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10), yaxis_title="Value per person (+10 correct, −6 wrong)")
+            st.plotly_chart(fig1, config={"displayModeBar": False})
+            st.caption(f"Firm break-even accuracy {threshold(10, 6):.1%}; the balanced arm (±2) pays agents only above "
+                       f"{threshold(2, 2):.0%}, so it can make them too cautious (slide 9).")
+            st.download_button("Download Experiment 1 CSV", e1.to_csv(index=False).encode("utf-8"), "experiment1_results.csv", "text/csv")
+
+        # ---------------- Experiment 2
+        st.subheader("Experiment 2: warranty default")
         if e2.empty:
             st.info("No Experiment 2 submissions yet.")
         else:
-            summary2 = (
-                e2.groupby("arm", as_index=False)
-                  .agg(
-                      students=("participant_id", "count"),
-                      adoption_rate=("chose_plan", "mean"),
-                      avg_trust=("trust_rating", "mean"),
-                  )
-            )
-            summary2["adoption_rate"] = summary2["adoption_rate"].map(lambda x: f"{x:.1%}")
-            st.dataframe(summary2, width="stretch", hide_index=True)
-
-            st.bar_chart(
-                e2.groupby("arm")["chose_plan"].mean().rename("adoption rate"),
-                horizontal=True,
-            )
-            effect2 = prop_diff(
-                e2.loc[e2["arm"] == "Opt-Out", "chose_plan"],
-                e2.loc[e2["arm"] == "Opt-In", "chose_plan"],
-            )
-            if effect2 is not None:
-                default_effect = effect2[0]
-                show_effect("Default effect (Opt-Out minus Opt-In)", effect2)
-
-                st.markdown("**Translate adoption into margin**")
+            s2 = e2.groupby("arm").agg(students=("participant_id", "count"), adoption=("chose_plan", "mean"), fairness=("trust_rating", "mean"))
+            st.dataframe(s2.reset_index().rename(columns={"arm": "Arm", "students": "Students", "adoption": "Adoption", "fairness": "Fairness (1–5)"})
+                         .style.format({"Adoption": "{:.0%}", "Fairness (1–5)": "{:.2f}"}), hide_index=True, width="stretch")
+            t, c = e2[e2["arm"] == "Opt-Out"], e2[e2["arm"] == "Opt-In"]
+            if len(t) and len(c):
+                dp = diff_props(t["chose_plan"].mean(), len(t), c["chose_plan"].mean(), len(c))
+                fair = diff_means(t["trust_rating"].mean(), t["trust_rating"].std() or 0, len(t),
+                                  c["trust_rating"].mean(), c["trust_rating"].std() or 0, len(c))
+                st.metric("Default effect (opt-out minus opt-in)", f"{dp['diff']*100:+.1f} pp")
+                st.caption(f"95% CI {dp['lo']*100:+.1f} to {dp['hi']*100:+.1f} pp. Smallest effect this class can reliably detect: "
+                           f"about {mde(c['chose_plan'].mean() or 0.3, min(len(t), len(c)))*100:.0f} pp.")
+                c1, c2, c3, c4 = st.columns(4)
+                contrib = c1.number_input("Net contribution per plan (CAD)", 0.0, 200.0, float(CASE["plan_contribution"]), 5.0)
+                cust = c2.number_input("Customers a year", 1000, 100000, CASE["customers"], 1000)
+                cancel = c3.slider("Default-induced buyers who cancel (%)", 0, 90, 30, 5) / 100
+                handle = c4.number_input("Cost per cancellation (CAD)", 0.0, 100.0, 15.0, 1.0)
+                impl = st.number_input("Cost to implement the default (CAD)", 0.0, 500000.0, 20000.0, 5000.0)
+                lo = default_margin(max(dp["lo"], -1), cust, contrib, cancel, handle)["net"]
+                mid = default_margin(dp["diff"], cust, contrib, cancel, handle)["net"]
+                hi = default_margin(min(dp["hi"], 1), cust, contrib, cancel, handle)["net"]
+                fell = fair["hi"] < 0
                 c1, c2 = st.columns(2)
-                with c1:
-                    net_contribution = st.number_input(
-                        "Net contribution per protection plan (CAD)",
-                        min_value=0.0,
-                        value=40.0,
-                        step=5.0,
-                        help="Enter price minus expected service/administration cost."
-                    )
-                with c2:
-                    customer_volume = st.number_input(
-                        "Customer volume for scaling",
-                        min_value=1,
-                        value=10000,
-                        step=1000
-                    )
-                incremental_margin = default_effect * customer_volume * net_contribution
-                st.metric(
-                    "Estimated incremental contribution margin",
-                    f"CAD {incremental_margin:,.0f}"
-                )
-                st.caption(
-                    "This is a first-pass calculation. It does not subtract any additional "
-                    "complaint, cancellation, regulatory, or trust costs caused by the default."
-                )
+                c1.metric("Net contribution a year", f"CAD {mid:,.0f}", help=f"95% range CAD {lo:,.0f} to {hi:,.0f}")
+                c2.metric("Decision (slide 28)", scale_decision(lo, hi, impl, trust_fell=fell))
+                st.caption(f"Fairness, opt-out minus opt-in: {ci_text(fair, 1, ' points')}. "
+                           "The EU bans pre-ticked boxes for extra payments; include legal review before any rollout.")
+            st.download_button("Download Experiment 2 CSV", e2.to_csv(index=False).encode("utf-8"), "experiment2_results.csv", "text/csv")
 
-            st.download_button(
-                "Download Experiment 2 CSV",
-                e2.to_csv(index=False).encode("utf-8"),
-                "experiment2_results.csv",
-                "text/csv"
-            )
-
-        st.subheader("Experiment 3 results")
+        # ---------------- Experiment 3
+        st.subheader("Experiment 3: colour preference")
         if e3.empty:
             st.info("No Experiment 3 submissions yet.")
         else:
-            summary3 = (
-                e3.groupby("preferred_color", as_index=False)
-                  .agg(
-                      students=("participant_id", "count"),
-                      avg_purchase_likelihood=("purchase_likelihood", "mean"),
-                      premium_share=("would_pay_premium", "mean"),
-                  )
-            )
-            total3 = summary3["students"].sum()
-            summary3["choice_share"] = summary3["students"] / total3
-            summary3["choice_share"] = summary3["choice_share"].map(lambda x: f"{x:.1%}")
-            summary3["premium_share"] = summary3["premium_share"].map(lambda x: f"{x:.1%}")
-            st.dataframe(summary3, width="stretch", hide_index=True)
-            st.download_button(
-                "Download Experiment 3 CSV",
-                e3.to_csv(index=False).encode("utf-8"),
-                "experiment3_results.csv",
-                "text/csv"
-            )
+            n3 = len(e3)
+            s3 = e3.groupby("preferred_color").agg(students=("participant_id", "count"), likelihood=("purchase_likelihood", "mean"),
+                                                   premium=("would_pay_premium", "mean"))
+            s3["share"] = s3["students"] / n3
+            s3 = s3.sort_values("share", ascending=False)
+            cis = [share_ci(p, n3) for p in s3["share"]]
+            fig3 = go.Figure(go.Scatter(x=s3["share"] * 100, y=list(s3.index), mode="markers", marker=dict(size=13, color=RED),
+                                        error_x=dict(type="data", symmetric=False, array=[(h - p) * 100 for (l, h), p in zip(cis, s3["share"])],
+                                                     arrayminus=[(p - l) * 100 for (l, h), p in zip(cis, s3["share"])], color=INK)))
+            fig3.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), xaxis=dict(range=[0, 100], ticksuffix="%"),
+                               yaxis=dict(autorange="reversed"))
+            st.plotly_chart(fig3, config={"displayModeBar": False})
+            st.dataframe(s3.reset_index().rename(columns={"preferred_color": "Colour", "students": "Students", "share": "Share",
+                                                          "likelihood": "Purchase likelihood (1–5)", "premium": "Would pay CAD 50 more"})
+                         .style.format({"Share": "{:.0%}", "Purchase likelihood (1–5)": "{:.2f}", "Would pay CAD 50 more": "{:.0%}"}),
+                         hide_index=True, width="stretch")
+            st.caption("A preference test, not a treatment effect. Overlapping intervals mean the ranking may be noise; "
+                       "each extra colour raises safety stock with the square root of the number of colours (slide 19).")
+            st.download_button("Download Experiment 3 CSV", e3.to_csv(index=False).encode("utf-8"), "experiment3_results.csv", "text/csv")
 
-        st.subheader("Experiment 4 results")
+        # ---------------- Experiment 4
+        st.subheader("Experiment 4: gain vs loss framing")
         if e4.empty:
             st.info("No Experiment 4 submissions yet.")
         else:
-            summary4 = (
-                e4.groupby("arm", as_index=False)
-                  .agg(
-                      students=("participant_id", "count"),
-                      ecoseries_rate=("chose_upgrade", "mean"),
-                      avg_persuasiveness=("persuasiveness", "mean"),
-                      risky_plan_share=("chose_risky", "mean"),
-                  )
-            )
-            chart4 = summary4.set_index("arm")[["ecoseries_rate", "risky_plan_share"]]
-            for c in ["ecoseries_rate", "risky_plan_share"]:
-                summary4[c] = summary4[c].map(lambda x: f"{x:.1%}")
-            st.dataframe(summary4, width="stretch", hide_index=True)
-            st.bar_chart(chart4, stack=False)
-
-            loss = e4[e4["arm"] == "Loss frame"]
-            gain = e4[e4["arm"] == "Gain frame"]
-            c1, c2 = st.columns(2)
-            eff_up = prop_diff(loss["chose_upgrade"], gain["chose_upgrade"])
-            eff_risk = prop_diff(loss["chose_risky"], gain["chose_risky"])
-            if eff_up is not None:
+            s4 = e4.groupby("arm").agg(students=("participant_id", "count"), eco=("chose_upgrade", "mean"),
+                                       persuasive=("persuasiveness", "mean"), risky=("chose_risky", "mean"))
+            st.dataframe(s4.reset_index().rename(columns={"arm": "Arm", "students": "Students", "eco": "Chose EcoSmart",
+                                                          "persuasive": "Persuasiveness (1–5)", "risky": "Chose risky Plan B"})
+                         .style.format({"Chose EcoSmart": "{:.0%}", "Persuasiveness (1–5)": "{:.2f}", "Chose risky Plan B": "{:.0%}"}),
+                         hide_index=True, width="stretch")
+            L, G = e4[e4["arm"] == "Loss frame"], e4[e4["arm"] == "Gain frame"]
+            if len(L) and len(G):
+                eco = diff_props(L["chose_upgrade"].mean(), len(L), G["chose_upgrade"].mean(), len(G))
+                risk = diff_props(L["chose_risky"].mean(), len(L), G["chose_risky"].mean(), len(G))
+                dcm = (CASE["eco_price"] - CASE["eco_unit_cost"]) - (CASE["std_price"] - CASE["mc"])
+                c1, c2 = st.columns(2)
                 with c1:
-                    show_effect("EcoSeries uptake: Loss minus Gain", eff_up)
+                    st.metric("EcoSmart choice, loss minus gain", f"{eco['diff']*100:+.1f} pp")
+                    st.caption(f"95% CI {eco['lo']*100:+.1f} to {eco['hi']*100:+.1f} pp. Worth about CAD "
+                               f"{eco['diff']*CASE['customers']*dcm:,.0f} a year at CAD {dcm} per switch.")
                 with c2:
-                    show_effect("Risky Plan B: Loss minus Gain", eff_risk)
+                    st.metric("Risky Plan B, loss minus gain", f"{risk['diff']*100:+.1f} pp")
+                    st.caption(f"95% CI {risk['lo']*100:+.1f} to {risk['hi']*100:+.1f} pp.")
             with st.expander("Debrief notes"):
                 st.markdown(
-                    "- **Decision 1 (message framing):** both messages state the same CAD 60/year saving. "
-                    "Loss aversion predicts the loss-framed message is at least as persuasive, often more so. "
-                    "Field evidence is mixed, which is itself a useful discussion point.\n"
-                    "- **Decision 2 (risky choice):** Plans A and B have the same expected outcome (200 retained / 400 lost). "
-                    "Tversky & Kahneman (1981) found people tend to be **risk-averse in gains** (pick the sure Plan A) "
-                    "and **risk-seeking in losses** (gamble on Plan B). A positive Loss-minus-Gain gap on Plan B "
-                    "replicates this.\n"
-                    "- **Managerial angle:** how a decision is presented to a board, a customer or a team can flip "
-                    "the choice without changing any fact. When is that persuasion, and when is it manipulation?"
-                )
-            st.download_button(
-                "Download Experiment 4 CSV",
-                e4.to_csv(index=False).encode("utf-8"),
-                "experiment4_results.csv",
-                "text/csv"
-            )
+                    "- **Decision 1 (message framing):** both messages state the same CAD 180 a year. EcoSmart repays its CAD 100 "
+                    "premium in about 7 months, so the nudge points toward a choice that also helps the buyer. The saving claim "
+                    "must be substantiated before it is used in marketing.\n"
+                    "- **Decision 2 (risky choice):** Plans A and B have the same expected outcome (200 retained, 400 lost). "
+                    "Tversky and Kahneman (1981) found people risk-averse in gains and risk-seeking in losses; a positive "
+                    "loss-minus-gain gap on Plan B replicates this.\n"
+                    "- **Managerial angle:** presentation can flip a choice without changing a fact. When is that persuasion, "
+                    "and when is it manipulation?")
+            st.download_button("Download Experiment 4 CSV", e4.to_csv(index=False).encode("utf-8"), "experiment4_results.csv", "text/csv")
 
         st.divider()
-        st.caption(
-            "Default instructor code is 'northstar'. For classroom use, set an environment variable "
-            "INSTRUCTOR_CODE to your preferred code before launching the app."
-        )
-    elif code:
-        st.error("Incorrect instructor code.")
+        with st.expander("Start a new class session"):
+            st.write("Archives every current results table (data are kept, renamed with a timestamp) and starts empty tables. "
+                     "Use this between sections so classes do not mix.")
+            ok = st.checkbox("I have downloaded the results I need", key="inst_archive_ok")
+            if st.button("Archive results and start a new session", disabled=not ok, type="primary"):
+                stamp = archive_all()
+                st.success(f"Archived as *_archived_{stamp}. New submissions start from zero.")
+        st.caption("Set the INSTRUCTOR_CODE environment variable to change the access code (the default is 'northstar'). "
+                   "Submissions are stored in northstar_experiments.db next to the app.")
